@@ -1,11 +1,10 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.models import HangRail, RailPlacement, Store, WorkOrder
+from app.services.clock import Clock, get_clock
 from app.schemas.schemas import (
     HangRequest,
     OccupancyOut,
@@ -67,7 +66,7 @@ def occupancy(rail_id: int, db: Session = Depends(get_db)):
 
 
 @api_router.post("/hang", response_model=OrderOut)
-def hang(body: HangRequest, db: Session = Depends(get_db)):
+def hang(body: HangRequest, db: Session = Depends(get_db), clock: Clock = Depends(get_clock)):
     order = db.get(WorkOrder, body.order_id)
     if not order:
         raise HTTPException(404, "工单不存在")
@@ -97,7 +96,7 @@ def hang(body: HangRequest, db: Session = Depends(get_db)):
             )
         )
         order.status = "hung"
-        order.hung_at = datetime.utcnow()
+        order.hung_at = clock.now()
         db.commit()
         db.refresh(order)
         return order
@@ -124,8 +123,8 @@ def pickup(body: PickupRequest, db: Session = Depends(get_db)):
 
 
 @api_router.post("/overdue/scan", response_model=list[OrderOut])
-def overdue_scan(db: Session = Depends(get_db)):
-    now = datetime.utcnow()
+def overdue_scan(db: Session = Depends(get_db), clock: Clock = Depends(get_clock)):
+    now = clock.now()
     hung = db.scalars(select(WorkOrder).where(WorkOrder.status == "hung")).all()
     marked = []
     for o in hung:
